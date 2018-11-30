@@ -1,0 +1,64 @@
+//Las importaciones pertinentes
+import org.apache.spark.ml.clustering.KMeans
+import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.ml.linalg.Vectors
+import org.apache.spark.ml.clustering.BisectingKMeans
+//reportar errores reciduos
+import org.apache.log4j._
+Logger.getLogger("org").setLevel(Level.ERROR)
+
+//Inicio de sesion en spark
+val spark = SparkSession.builder().getOrCreate()
+Logger.getLogger("org").setLevel(Level.ERROR)
+
+//Cargar el archivo CSV
+val data = spark.read.option("inferSchema","true").csv("Iris.csv")
+data.show()
+//se imprime las columnas con sus encabezados
+// val colnames = data.columns
+// val firstrow = data.head(1)(0)
+// println("\n")
+// //Ejemplo de un renglon
+// println("Example Data Row")
+// for(ind <- Range(1,colnames.length)){
+//   println(colnames(ind))
+//   println(firstrow(ind))
+//   println("\n")
+// }
+
+//Limpieza de datos
+val convert = udf[Double, String](_.toDouble)
+val data2 = data.withColumn("_c0",convert(data("_c0"))).withColumn("_c1",convert(data("_c1"))).
+withColumn("_c2",convert(data("_c2"))).withColumn("_c3",convert(data("_c3"))).
+select($"_c0".as("SepalLength"),$"_c1".as("SepalWidth"),$"_c2".as("PetalLength"),$"_c3".as("PetalWidth"))
+
+data2.show()
+
+//Utilizacion de assembler y transformacion
+val assembler = new VectorAssembler()  .setInputCols(Array("SepalLength","SepalWidth","PetalLength","PetalWidth")).setOutputCol("features")
+
+val output = assembler.transform(data2).select($"features")
+output.show()
+
+//Utilizando K-KMeans
+val kmeans = new KMeans().setK(5).setSeed(1L)
+val model = kmeans.fit(output)
+
+val WSSSE = model.computeCost(output)
+println(s"Within set sum of Squared Errors = $WSSSE")
+
+println("Cluster Centers: ")
+model.clusterCenters.foreach(println)
+
+//Utilizando Bisecting K-KMeans
+val bikmeans = new BisectingKMeans().setK(5).setSeed(1)
+val model = bikmeans.fit(output)
+
+val cost = model.computeCost(output)
+println(s"Within Set Sum of Squared Errors = $cost")
+
+println("Cluster Centers: ")
+val centers = model.clusterCenters
+centers.foreach(println)
